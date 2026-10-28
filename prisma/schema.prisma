@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js" // Sedikit koreksi: standar bawaan prisma adalah prisma-client-js
+  provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
