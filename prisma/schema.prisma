@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js" // Sedikit koreksi: standar bawaan prisma adalah prisma-client-js
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+}
+
+enum OrderType {
+  DINE_IN
+  TAKE_AWAY
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  READY
+  COMPLETED
+  EXPIRED
+}
+
+enum PaymentMethod {
+  QRIS
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
+enum NotifyPreference {
+  SOUND
+  MESSAGE
+}
+
+enum OrderSource {
+  CUSTOMER
+  CASHIER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(CASHIER)
+  createdAt    DateTime @default(now())
+
+  @@map("users") // <-- Nama tabel di DB: users
+}
+
+model Table {
+  id       Int     @id @default(autoincrement())
+  number   Int     @unique
+  isActive Boolean @default(true)
+  orders   Order[]
+
+  @@map("tables") // <-- Nama tabel di DB: tables
+}
+
+model Category {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  sortOrder Int        @default(0)
+  items     MenuItem[]
+
+  @@map("categories") // <-- Nama tabel di DB: categories
+}
+
+model MenuItem {
+  id          Int         @id @default(autoincrement())
+  categoryId  Int
+  category    Category    @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  price       Int
+  imageUrl    String?
+  isAvailable Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  orderItems  OrderItem[]
+
+  @@map("menu_items") // <-- Nama tabel di DB: menu_items (snake_case lebih disukai di SQL)
+}
+
+// Penghitung nomor antrean per hari (kunci: "YYYY-MM-DD" zona Asia/Jakarta)
+model QueueCounter {
+  date String @id
+  last Int    @default(0)
+
+  @@map("queue_counters") // <-- Nama tabel di DB: queue_counters
+}
+
+model Order {
+  id               String           @id @default(cuid())
+  code             String           @unique
+  queueNumber      Int
+  queueDate        String
+  customerName     String
+  orderType        OrderType
+  tableId          Int?
+  table            Table?           @relation(fields: [tableId], references: [id])
+  status           OrderStatus      @default(PENDING)
+  paymentMethod    PaymentMethod
+  notifyPreference NotifyPreference @default(SOUND)
+  source           OrderSource      @default(CUSTOMER)
+  subtotal         Int
+  total            Int
+  internalNote     String?
+  expiresAt        DateTime?
+  paidAt           DateTime?
+  readyAt          DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  items            OrderItem[]
+  payment          Payment?
+
+  @@unique([queueDate, queueNumber])
+  @@index([queueDate, status])
+  @@index([status, expiresAt])
+  @@map("orders") // <-- Nama tabel di DB: orders
+}
+
+model OrderItem {
+  id         Int      @id @default(autoincrement())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId Int
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  // snapshot agar riwayat tidak berubah saat menu diedit
+  name       String
+  price      Int
+  quantity   Int
+  note       String?
+
+  @@map("order_items") // <-- Nama tabel di DB: order_items
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider        String // SIMULATOR | MIDTRANS | CASH
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  amount          Int
+  providerOrderId String?       @unique
+  transactionId   String?
+  qrString        String?
+  qrUrl           String?
+  expiresAt       DateTime?
+  paidAt          DateTime?
+  rawResponse     Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("payments") // <-- Nama tabel di DB: payments
+}
